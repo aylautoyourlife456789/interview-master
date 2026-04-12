@@ -12,7 +12,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-        import { getDatabase, ref, get, set, increment } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, get, set, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAQ51wpt_kILP59ILdv1HS0WewRDrMb33Q",
@@ -94,10 +94,19 @@
                 return false;
             }
 
-            await set(usageRef, {
-                count: count + 1,
-                email: user.email,
-                lastUsed: new Date().toISOString()
+            // 取得表單資料
+            const jobTitle = document.getElementById('jobTitle').value.trim();
+            const seniorityLevel = document.getElementById('seniorityLevel').value;
+
+            // 更新次數
+            await set(ref(db, 'usage/' + user.uid + '/count'), count + 1);
+            await set(ref(db, 'usage/' + user.uid + '/email'), user.email);
+
+            // 新增本次使用紀錄
+            await push(ref(db, 'usage/' + user.uid + '/history'), {
+                jobTitle: jobTitle,
+                seniorityLevel: seniorityLevel,
+                timestamp: new Date().toISOString()
             });
 
             // 更新畫面
