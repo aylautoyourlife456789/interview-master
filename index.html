@@ -30,7 +30,11 @@
         const db = getDatabase(app);
         const provider = new GoogleAuthProvider();
 
-        // 監聽登入狀態
+        // 開發者白名單（無限次使用）
+        const DEV_EMAILS = ['aylautoyourlife456789@gmail.com'];
+        const isDevUser = (email) => DEV_EMAILS.includes(email);
+
+        // 監聯登入狀態
         onAuthStateChanged(auth, (user) => {
             const loginSection = document.getElementById('loginSection');
             const appSection = document.getElementById('appSection');
@@ -54,9 +58,14 @@
                 const usageRef = ref(db, 'usage/' + user.uid);
                 get(usageRef).then((snapshot) => {
                     const count = snapshot.exists() ? snapshot.val().count || 0 : 0;
-                    usageCount.textContent = `已使用 ${count} / 3 次`;
-                    if (count >= 3) {
-                        usageCount.classList.add('text-red-400');
+                    if (isDevUser(user.email)) {
+                        usageCount.textContent = `開發者 (無限次)`;
+                        usageCount.classList.add('text-emerald-400');
+                    } else {
+                        usageCount.textContent = `已使用 ${count} / 3 次`;
+                        if (count >= 3) {
+                            usageCount.classList.add('text-red-400');
+                        }
                     }
                 });
 
@@ -92,7 +101,7 @@
             const snapshot = await get(usageRef);
             const count = snapshot.exists() ? snapshot.val().count || 0 : 0;
 
-            if (count >= 3) {
+            if (count >= 3 && !isDevUser(user.email)) {
                 alert('您的帳號已使用 3 次，已達上限。');
                 return false;
             }
@@ -114,9 +123,13 @@
             });
 
             // 更新畫面
-            document.getElementById('usageCount').textContent = `已使用 ${count + 1} / 3 次`;
-            if (count + 1 >= 3) {
-                document.getElementById('usageCount').classList.add('text-red-400');
+            if (isDevUser(user.email)) {
+                document.getElementById('usageCount').textContent = `開發者 (無限次)`;
+            } else {
+                document.getElementById('usageCount').textContent = `已使用 ${count + 1} / 3 次`;
+                if (count + 1 >= 3) {
+                    document.getElementById('usageCount').classList.add('text-red-400');
+                }
             }
             return newRef.key;
         };
