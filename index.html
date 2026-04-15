@@ -719,7 +719,16 @@
                         throw new Error(`伺服器回應錯誤 (HTTP ${response.status})`);
                     }
 
-                    const data = await response.json();
+                    const rawText = await response.text();
+                    if (!rawText || !rawText.trim()) {
+                        throw new Error('伺服器回傳空內容，請稍後再試');
+                    }
+                    let data;
+                    try {
+                        data = JSON.parse(rawText);
+                    } catch (parseErr) {
+                        throw new Error('伺服器回傳格式錯誤');
+                    }
                     console.log('Raw API response:', JSON.stringify(data, null, 2));
 
                     // n8n error trigger 回傳 { success: false, error: "..." }
