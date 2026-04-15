@@ -715,24 +715,29 @@
                         body: formData,
                     }, API_TIMEOUT_MS);
 
-                    if (!response.ok) {
-                        throw new Error(`伺服器回應錯誤 (HTTP ${response.status})`);
-                    }
-
                     const rawText = await response.text();
-                    if (!rawText || !rawText.trim()) {
-                        throw new Error('伺服器回傳空內容，請稍後再試');
+                    let data = null;
+                    if (rawText && rawText.trim()) {
+                        try {
+                            data = JSON.parse(rawText);
+                        } catch (parseErr) {
+                            // 非 JSON 回傳
+                        }
                     }
-                    let data;
-                    try {
-                        data = JSON.parse(rawText);
-                    } catch (parseErr) {
-                        throw new Error('伺服器回傳格式錯誤');
-                    }
-                    console.log('Raw API response:', JSON.stringify(data, null, 2));
+                    console.log('Raw API response:', rawText);
 
-                    // n8n error trigger 回傳 { success: false, error: "..." }
-                    if (data && data.success === false) {
+                    // 非 2xx：優先顯示 n8n 帶回的 error 訊息
+                    if (!response.ok) {
+                        const msg = data?.error || `伺服器回應錯誤 (HTTP ${response.status})`;
+                        throw new Error(msg);
+                    }
+
+                    if (!data) {
+                        throw new Error('伺服器回傳空內容或格式錯誤，請稍後再試');
+                    }
+
+                    // n8n error 分支回傳 { success: false, error: "..." }
+                    if (data.success === false) {
                         throw new Error(data.error || '分析流程失敗');
                     }
 
