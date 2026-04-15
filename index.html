@@ -92,8 +92,8 @@
         // 登出
         window.logoutUser = () => signOut(auth);
 
-        // 檢查並扣次數（供表單送出時呼叫）
-        window.checkAndUseQuota = async () => {
+        // 檢查配額（不扣次數，供送出前呼叫）
+        window.checkQuota = async () => {
             const user = auth.currentUser;
             if (!user) return false;
 
@@ -105,24 +105,30 @@
                 alert('您的帳號已使用 3 次，已達上限。');
                 return false;
             }
+            return { count };
+        };
 
-            // 取得表單資料
+        // 扣次數並建立歷史紀錄（僅在 n8n 成功回傳有效結果後呼叫）
+        window.consumeQuota = async (count, results, reportUrl) => {
+            const user = auth.currentUser;
+            if (!user) return null;
+
             const jobTitle = document.getElementById('jobTitle').value.trim();
             const seniorityLevel = document.getElementById('seniorityLevel').value;
 
-            // 更新次數
             await set(ref(db, 'usage/' + user.uid + '/count'), count + 1);
             await set(ref(db, 'usage/' + user.uid + '/email'), user.email);
 
-            // 新增本次使用紀錄，回傳 key 供後續存結果
             const newRef = push(ref(db, 'usage/' + user.uid + '/history'));
-            await set(newRef, {
-                jobTitle: jobTitle,
-                seniorityLevel: seniorityLevel,
-                timestamp: new Date().toISOString()
-            });
+            const entry = {
+                jobTitle,
+                seniorityLevel,
+                timestamp: new Date().toISOString(),
+                results
+            };
+            if (reportUrl) entry.reportUrl = reportUrl;
+            await set(newRef, entry);
 
-            // 更新畫面
             if (isDevUser(user.email)) {
                 document.getElementById('usageCount').textContent = `開發者 (無限次)`;
             } else {
@@ -132,16 +138,6 @@
                 }
             }
             return newRef.key;
-        };
-
-        // 將分析結果存回該筆紀錄
-        window.saveResultsToHistory = async (historyKey, results, reportUrl) => {
-            const user = auth.currentUser;
-            if (!user || !historyKey) return;
-            await set(ref(db, 'usage/' + user.uid + '/history/' + historyKey + '/results'), results);
-            if (reportUrl) {
-                await set(ref(db, 'usage/' + user.uid + '/history/' + historyKey + '/reportUrl'), reportUrl);
-            }
         };
 
         // 載入歷史紀錄
@@ -681,9 +677,9 @@
                 // Final guard
                 if (!isJobTitleValid() || !isSeniorityValid() || !isFileValid()) return;
 
-                // 檢查使用次數（回傳 history key 或 false）
-                const historyKey = await window.checkAndUseQuota();
-                if (!historyKey) return;
+                // 檢查配額（不扣次數，n8n 成功後才扣）
+                const quota = await window.checkQuota();
+                if (!quota) return;
 
                 setLoading(true);
 
@@ -726,6 +722,11 @@
                     const data = await response.json();
                     console.log('Raw API response:', JSON.stringify(data, null, 2));
 
+                    // n8n error trigger 回傳 { success: false, error: "..." }
+                    if (data && data.success === false) {
+                        throw new Error(data.error || '分析流程失敗');
+                    }
+
                     // Parse results: { results: [...], reportUrl: "..." } or plain array
                     let results, reportUrl;
                     if (data.results) {
@@ -737,7 +738,7 @@
                     }
                     console.log('Parsed results[0]:', JSON.stringify(results[0], null, 2));
 
-                    if (results.length === 0 || results[0]?.error) {
+                    if (!Array.isArray(results) || results.length === 0 || results[0]?.error) {
                         throw new Error(results[0]?.error || '未取得分析結果');
                     }
 
@@ -745,8 +746,8 @@
                     renderResultCards(results, reportUrl);
                     setLoading(false);
 
-                    // 將結果存到歷史紀錄
-                    await window.saveResultsToHistory(historyKey, results, reportUrl);
+                    // 成功才扣次數 + 寫入歷史紀錄
+                    await window.consumeQuota(quota.count, results, reportUrl);
                     await window.loadHistory();
 
                 } catch (err) {
